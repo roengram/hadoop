@@ -847,7 +847,7 @@ public class RMContainerAllocator extends RMContainerRequestor
     /** Maps from a host to a list of Map tasks with data on the host */
     private final Map<String, LinkedList<TaskAttemptId>> mapsHostMapping = 
       new HashMap<String, LinkedList<TaskAttemptId>>();
-    private final Map<String, LinkedList<TaskAttemptId>> mapsRackMapping =
+    private final RackMap<LinkedList<TaskAttemptId>> mapsRackMapping =
       new RackMap<LinkedList<TaskAttemptId>>();
     @VisibleForTesting
     final Map<TaskAttemptId, ContainerRequest> maps =

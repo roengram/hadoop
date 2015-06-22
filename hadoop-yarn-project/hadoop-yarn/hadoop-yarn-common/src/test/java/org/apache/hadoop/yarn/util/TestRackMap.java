@@ -23,63 +23,106 @@ import org.junit.Test;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-
 public class TestRackMap {
 
-    private static final Log LOG =
-            LogFactory.getLog(TestRackMap.class);
+  private static final Log LOG = LogFactory.getLog(TestRackMap.class);
 
-    @Test
-    public void testEmpty() {
-        RackMap<String> rm = new RackMap<String>();
-        Assert.assertEquals(null, rm.get("/non-exist"));
-        Assert.assertEquals("Empty RackMap should have 0 element", 0, rm.size());
-    }
+  @Test public void testEmpty() {
+    RackMap<String> rm = new RackMap<String>();
+    Assert.assertEquals("Get from an empty Map should return null", null, rm.get(
+                    "/non-exist"));
+    Assert.assertEquals("Removing an empty Map should return null", null, rm.remove(
+                    "/non-exist"));
+    Assert.assertEquals("Empty map should have size 0", 0, rm.size());
+  }
 
-    @Test
-    public void testOneLevelTrie() {
-        RackMap<String> rm = new RackMap<String>();
+  @Test public void testOneLevelTrie() {
+    RackMap<String> rm = new RackMap<String>();
 
-        rm.put("/a", "/a");
-        rm.put("/b", "/b");
+    rm.put("/a", "/a");
+    rm.put("/b", "/b");
 
-        Assert.assertEquals("Inserted key/value should exist", "/a", rm.get("/a"));
-        Assert.assertEquals("Inserted key/value should exist", "/b", rm.get("/b"));
-    }
+    Assert.assertEquals("Inserted key/value should exist", "/a", rm.get("/a"));
+    Assert.assertEquals("Inserted key/value should exist", "/b", rm.get("/b"));
+    Assert.assertNotNull("Closest value should be returned", rm.get("/c"));
+    Assert.assertEquals("Any of the closest value should be returned", true,
+                    (rm.get("/c").equals("/a") || (rm.get("/c").equals("/b"))));
+  }
 
-    @Test
-    public void testRemoveOneLevel() {
-        RackMap<String> rm = new RackMap<String>();
+  @Test public void testDuplicatedGet() {
+    RackMap<String> rm = new RackMap<String>();
+    rm.put("/a", "/a");
+    Assert.assertEquals("Calling get() twice should result the same",
+                    rm.get("/a"), rm.get("/a"));
+  }
 
-        rm.put("/a", "/a");
-        rm.remove("/a");
-        Assert.assertEquals("Removed key/value should not exist", null, rm.get("/a"));
-    }
+  @Test public void testDuplicatedPut() {
+    RackMap<String> rm = new RackMap<String>();
+    rm.put("/a", "/a");
+    int size = rm.size();
+    Assert.assertEquals("Putting one k-v in an empty Map should set size to 1",
+                    1, rm.size());
+    Assert.assertEquals("Putting twice should not increase size",
+                    size, rm.size());
+  }
 
-    @Test
-    public void testReturnClosestLeafNode() {
-        RackMap<String> rm = new RackMap<String>();
+  @Test public void testDuplicatedRemove() {
+    RackMap<String> rm = new RackMap<String>();
+    rm.put("/a", "/a");
+    Assert.assertEquals("Putting one k-v in an empty Map should set size to 1",
+                    1, rm.size());
+    rm.remove("/a");
+    Assert.assertEquals(0, rm.size());
+    rm.remove("/a");
+    Assert.assertEquals(0, rm.size());
+  }
 
-        rm.put("/a/b/c", "/a/b/c");
-        rm.put("/a/d/e", "/a/d/e");
+  @Test public void testClear() {
+    RackMap<String> rm = new RackMap<String>();
+    rm.put("/a", "/a");
+    rm.put("/b", "/b");
+    rm.put("/c", "/c");
+    Assert.assertEquals(3, rm.size());
+    rm.clear();
+    Assert.assertEquals(0, rm.size());
+    Assert.assertEquals(null, rm.get("/a"));
+    Assert.assertEquals(null, rm.get("/b"));
+    Assert.assertEquals(null, rm.get("/c"));
+  }
 
-        Assert.assertEquals("Return closest leaf node", "/a/b/c", rm.get("/a/b/d"));
-        rm.remove("/a/b/c");
-        Assert.assertEquals("Return closest leaf node", "/a/d/e", rm.get("/a/b/d"));
-        rm.remove("/a/d/e");
-        Assert.assertEquals("Return closest leaf node", null, rm.get("/a/b/d"));
-    }
+  @Test public void testRemoveOneLevel() {
+    RackMap<String> rm = new RackMap<String>();
 
-    @Test
-    public void testVariousRackIDLen() {
-        RackMap<String> rm = new RackMap<String>();
+    rm.put("/a", "/a");
+    rm.remove("/a");
+    Assert.assertEquals("Removed key/value should not exist", null,
+		    rm.get("/a"));
+  }
 
-        rm.put("/a", "/a");
-        rm.put("/aa", "/aa");
-        rm.put("/aaa", "/aaa");
+  @Test public void testReturnClosestLeafNode() {
+    RackMap<String> rm = new RackMap<String>();
 
-        Assert.assertEquals("Inserted key/value should exist", "/a", rm.get("/a"));
-        Assert.assertEquals("Inserted key/value should exist", "/aa", rm.get("/aa"));
-        Assert.assertEquals("Inserted key/value should exist", "/aaa", rm.get("/aaa"));
-    }
+    rm.put("/a/b/c", "/a/b/c");
+    rm.put("/a/d/e", "/a/d/e");
+
+    Assert.assertEquals("Return closest leaf node", "/a/b/c", rm.get("/a/b/d"));
+    rm.remove("/a/b/c");
+    Assert.assertEquals("Return closest leaf node", "/a/d/e", rm.get("/a/b/d"));
+    rm.remove("/a/d/e");
+    Assert.assertEquals("Return closest leaf node", null, rm.get("/a/b/d"));
+  }
+
+  @Test public void testVariousRackIDLen() {
+    RackMap<String> rm = new RackMap<String>();
+
+    rm.put("/a", "/a");
+    rm.put("/aa", "/aa");
+    rm.put("/aaa", "/aaa");
+
+    Assert.assertEquals("Inserted key/value should exist", "/a", rm.get("/a"));
+    Assert.assertEquals("Inserted key/value should exist", "/aa",
+		    rm.get("/aa"));
+    Assert.assertEquals("Inserted key/value should exist", "/aaa",
+		    rm.get("/aaa"));
+  }
 }

@@ -16,137 +16,186 @@
  * limitations under the License.
  */
 
-
 package org.apache.hadoop.yarn.util;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Set;
 import java.util.StringTokenizer;
 
 /**
- * Created by roengram on 15. 5. 21.
+ * A Map whose key is rack id - a sequence of strings delimited by '/'.
+ * This Map performs longest-prefix matching against a given key to find a value.
+ * This ensures nodes that are closest (in terms of network distance)
+ * to the given rack id are returned.
  */
-public class RackMap<V> extends HashMap<String, V> {
+public class RackMap<V> {
 
+  /**
+   * Root of internal Trie structure
+   */
+  private TrieNode root = new TrieNode("");
 
-    /*
-    Trie structure
-     - All leaf trie nodes have values
-     - All non-leaf trie nodes do not have values
+  /**
+   * Delimiter of rack id's components
+   */
+  private static String delimiter = "/";
 
-     */
+  /**
+   * Backend HashMap
+   */
+  private HashMap<String, V> rawMap = new HashMap<String, V>();
 
-    private TrieNode root = new TrieNode("ROOT");
+  /**
+   * Node for Trie structure.
+   * {@link org.apache.hadoop.yarn.util.RackMap.TrieNode#key}
+   * corresponds to a single component of rack id,
+   * and {@link org.apache.hadoop.yarn.util.RackMap.TrieNode#value}
+   * is a rack id composed of keys of all ancestors and this node.
+   * Only a leaf TrieNode has value.
+   */
+  private class TrieNode {
+    public String key = null;
+    public String value = null;
+    public TrieNode parent = null;
+    public HashMap<String, TrieNode> children = new HashMap<String, TrieNode>();
 
-    private class TrieNode {
-        public String key = null;
-        public String value = null;
-        public TrieNode parent = null;
-        public HashMap<String, TrieNode> children = new HashMap<String, TrieNode>();
-
-        public TrieNode(String key) {
-            this.key = key;
-        }
-
-        public void print(int indent) {
-            for(int i=0 ; i<indent ; i++) System.out.print("  ");
-            System.out.println(key + "(" + value + ")");
-            Set<String> keys = children.keySet();
-            for(String key: keys) {
-                TrieNode node = children.get(key);
-                node.print(indent+1);
-            }
-        }
+    public TrieNode(String key) {
+      this.key = key;
     }
 
-    @Override
-    public V put(String key, V value) {
-        StringTokenizer keyTok = new StringTokenizer(key, delimiter);
-        TrieNode node = root;
-        while(keyTok.hasMoreTokens()) {
-            String token = keyTok.nextToken();
-            if(node.children.containsKey(token) == false) {
-                TrieNode newNode = new TrieNode(token);
-                newNode.parent = node;
-                node.children.put(token, newNode);
-            }
-            node = node.children.get(token);
-        }
-        // put value
-        if(node.value == null) {
-            node.value = new String(key);
-        }
+    public void clearRecursive() {
+      key = null;
+      value = null;
+      parent = null;
 
-        return super.put(key, value);
+      Set<String> keys = children.keySet();
+      Iterator<String> it = keys.iterator();
+      while (it.hasNext()) {
+	TrieNode n = children.get(it.next());
+	n.clearRecursive();
+      }
+      children.clear();
+    }
+  }
+
+  /**
+   * Put a key and value to this Map.
+   * @param key Rack ID
+   * @param value value
+   * @return previous value associated with the given key
+   */
+  public V put(String key, V value) {
+    StringTokenizer keyTok = new StringTokenizer(key, delimiter);
+    TrieNode node = root;
+    while (keyTok.hasMoreTokens()) {
+      String token = keyTok.nextToken();
+      if (node.children.containsKey(token) == false) {
+	// insert new TrieNode
+	TrieNode newNode = new TrieNode(token);
+	newNode.parent = node;
+	node.children.put(token, newNode);
+      }
+      node = node.children.get(token);
+    }
+    // set leaf TrieNode's value to the given key
+    if (node.value == null) {
+      node.value = new String(key);
     }
 
-    public void remove(String key) {
-        // remove from trie
-        StringTokenizer keyTok = new StringTokenizer(key, delimiter);
-        TrieNode node = root;
-        while(keyTok.hasMoreTokens()) {
-            String token = keyTok.nextToken();
-            if(node.children.containsKey(token) == false) {
-                assert(super.containsKey(key) == false);
-                // no such node exists
-                return;
-            }
-            node = node.children.get(token);
-        }
-        assert(node != null);
+    return rawMap.put(key, value);
+  }
 
-        TrieNode parent = node.parent;
-        while(parent != null) {
-            parent.children.remove(node.key);
-            if(parent.children.isEmpty() == false) {
-                break;
-            }
-            parent = parent.parent;
-        }
-
-        // remove from backend map
-        super.remove(key);
+  /**
+   * Remove key-value pair associated with the given key
+   * @param key
+   * @return previous value associated with key
+   */
+  public V remove(String key) {
+    // remove from trie
+    StringTokenizer keyTok = new StringTokenizer(key, delimiter);
+    TrieNode node = root;
+    while (keyTok.hasMoreTokens()) {
+      String token = keyTok.nextToken();
+      if (node.children.containsKey(token) == false) {
+	assert (rawMap.containsKey(key) == false);
+	// no such node exists
+	return null;
+      }
+      node = node.children.get(token);
+    }
+    if (node == null) {
+      // no such node exists
+      return null;
     }
 
-    public V get(String key) {
-
-        // short cut
-        if(super.isEmpty()) {
-            return null;
-        }
-        if(super.containsKey(key)) {
-            return super.get(key);
-        }
-
-        // we do not have a value that matches the given key exactly
-        // return closest one instead
-
-        // get closest ancestor (that has children) of the given key
-        StringTokenizer keyTok = new StringTokenizer(key, delimiter);
-        TrieNode node = root;
-        TrieNode parent = null;
-        while(keyTok.hasMoreTokens() && node != null && node.children.isEmpty() == false) {
-            String token = keyTok.nextToken();
-            parent = node;
-            node = node.children.get(token);
-        }
-        assert(parent.children.size() > 0);
-
-        // return first descendant
-        node = parent.children.values().iterator().next();
-        while(node.children.isEmpty() == false) {
-            node = node.children.values().iterator().next();
-        }
-
-        // we should have a leaf node
-        assert(node.value != null);
-        return super.get(node.value);
+    TrieNode parent = node.parent;
+    while (parent != null) {
+      parent.children.remove(node.key);
+      if (parent.children.isEmpty() == false) {
+	break;
+      }
+      parent = parent.parent;
     }
 
-    public void print_trie() {
-        root.print(0);
+    // remove from backend map
+    return rawMap.remove(key);
+  }
+
+  /**
+   * Return a value associated with key.
+   * Performs longest prefix matching based on Trie structure.
+   * @param key rack id to find a value for.
+   * @return value that is associated with a key, which is closest (NW distance) to the given key
+   */
+  public V get(String key) {
+
+    // short cut
+    if (rawMap.isEmpty()) {
+      return null;
+    }
+    if (rawMap.containsKey(key)) {
+      return rawMap.get(key);
     }
 
-    private static String delimiter = "/";
+    // We do not have a value that exactly matches the given key
+    // Search for the closest one instead
 
+    // Get closest ancestor (with children) of the given key
+    StringTokenizer keyTok = new StringTokenizer(key, delimiter);
+    TrieNode node = root;
+    TrieNode parent = null;
+    while (keyTok.hasMoreTokens() && node != null
+		    && node.children.isEmpty() == false) {
+      String token = keyTok.nextToken();
+      parent = node;
+      node = node.children.get(token);
+    }
+    assert (parent.children.size() > 0);
+
+    // return first descendant
+    node = parent.children.values().iterator().next();
+    while (node.children.isEmpty() == false) {
+      node = node.children.values().iterator().next();
+    }
+
+    // we should have a leaf node
+    assert (node.value != null);
+    return rawMap.get(node.value);
+  }
+
+  /**
+   * Clear this Map
+   */
+  public void clear() {
+    root.clearRecursive();
+    rawMap.clear();
+  }
+
+  /**
+   * Return the number of key-value pairs stored in this Map
+   */
+  public int size() {
+    return rawMap.size();
+  }
 }
