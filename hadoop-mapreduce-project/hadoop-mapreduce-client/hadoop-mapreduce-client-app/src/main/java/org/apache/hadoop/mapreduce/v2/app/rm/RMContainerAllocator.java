@@ -83,6 +83,7 @@ import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
 import org.apache.hadoop.yarn.security.AMRMTokenIdentifier;
 import org.apache.hadoop.yarn.util.Clock;
+import org.apache.hadoop.yarn.util.RackMap;
 import org.apache.hadoop.yarn.util.RackResolver;
 import org.apache.hadoop.yarn.util.resource.Resources;
 
@@ -918,8 +919,8 @@ public class RMContainerAllocator extends RMContainerRequestor
     /** Maps from a host to a list of Map tasks with data on the host */
     private final Map<String, LinkedList<TaskAttemptId>> mapsHostMapping = 
       new HashMap<String, LinkedList<TaskAttemptId>>();
-    private final Map<String, LinkedList<TaskAttemptId>> mapsRackMapping = 
-      new HashMap<String, LinkedList<TaskAttemptId>>();
+    private final RackMap<LinkedList<TaskAttemptId>> mapsRackMapping =
+      new RackMap<LinkedList<TaskAttemptId>>();
     @VisibleForTesting
     final Map<TaskAttemptId, ContainerRequest> maps =
       new LinkedHashMap<TaskAttemptId, ContainerRequest>();
@@ -1276,7 +1277,17 @@ public class RMContainerAllocator extends RMContainerRequestor
         // hence this while loop would almost always have O(1) complexity
         String host = allocated.getNodeId().getHost();
         String rack = RackResolver.resolve(host).getNetworkLocation();
-        LinkedList<TaskAttemptId> list = mapsRackMapping.get(rack);
+        LinkedList<TaskAttemptId> list = null;
+        while(true) {
+          list = mapsRackMapping.get(rack);
+          if(list == null || list.size() > 0) {
+            break;
+          }
+          if(list.size() == 0) {
+            mapsRackMapping.remove(rack);
+          }
+        }
+
         while (list != null && list.size() > 0) {
           TaskAttemptId tId = list.removeFirst();
           if (maps.containsKey(tId)) {
